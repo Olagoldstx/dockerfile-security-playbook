@@ -2,3 +2,7 @@
 **/terraform.tfstate
 **/terraform.tfstate.*
 **/crash.log
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/crash.log
