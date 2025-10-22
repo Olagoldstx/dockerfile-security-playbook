@@ -73,12 +73,11 @@ make policy.check          # OPA/Conftest: Dockerfile, K8s, compose
 ```mermaid
 flowchart LR
   Dev[Developer] -->|git push| CI[CI: Build/Scan/Sign]
-  Sec[Security (You)] -->|OPA policies| CI
+  Sec[Security Team] -->|OPA policies| CI
   CI -->|Signed image + SBOM + Attestations| REG[(Private Registry)]
-  REG -->|Deploy| RT[Runtime (K8s/ECS)]
+  REG -->|Pull & Deploy| RT[Runtime (K8s/ECS)]
   Net[Network Team] -->|Egress allowlists + NetPolicies| RT
-  RT -->|Alerts| SOC[(SOC/SIEM)]
-```
+  RT -->|Security Events & Alerts| SOC[(SOC/SIEM)]
 
 ## What’s in this repo?
 - **Four secure example apps** with hardened Dockerfiles.
