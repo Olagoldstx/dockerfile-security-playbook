@@ -72,12 +72,12 @@ make policy.check          # OPA/Conftest: Dockerfile, K8s, compose
 ## Mermaid – High-Level Flow
 ```mermaid
 flowchart LR
-  Dev[Developer] -->|git push| CI[CI: Build/Scan/Sign]
-  Sec[Security Team] -->|OPA policies| CI
-  CI -->|Signed image + SBOM + Attestations| REG[(Private Registry)]
-  REG -->|Pull & Deploy| RT[Runtime (K8s/ECS)]
-  Net[Network Team] -->|Egress allowlists + NetPolicies| RT
-  RT -->|Security Events & Alerts| SOC[(SOC/SIEM)]
+   Dev["Developer"] -->|"git push"| CI["CI — Build/Scan/Sign"]
+  Sec["Security (You)"] -->|"OPA policies"| CI
+  CI -->|"Signed image + SBOM + Attestations"| REG["Private Registry"]
+  REG -->|"Deploy"| RT["Runtime (K8s/ECS)"]
+  Net["Network Team"] -->|"Egress allowlists + NetPolicies"| RT
+  RT -->|"Alerts"| SOC["SOC/SIEM"]
 
 ## What’s in this repo?
 - **Four secure example apps** with hardened Dockerfiles.
