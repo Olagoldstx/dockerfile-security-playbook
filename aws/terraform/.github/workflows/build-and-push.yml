@@ -1,0 +1,75 @@
+name: Build, Scan, Push, and Sign (ECR)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: apps/api-python-flask
+  IMAGE_TAG: latest
+
+jobs:
+  build-scan-push-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          docker build -t $ECR_REPO_URI:${{ env.IMAGE_TAG }} .
+          docker tag $ECR_REPO_URI:${{ env.IMAGE_TAG }} $ECR_REPO_URI:${{ github.sha }}
+
+      - name: Trivy scan (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ secrets.ECR_REPO_URI }}:${{ env.IMAGE_TAG }}
+          format: 'table'
+          exit-code: '1'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Generate SBOM (Syft CycloneDX JSON)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft scan image:${{ secrets.ECR_REPO_URI }}:${{ env.IMAGE_TAG }} -o cyclonedx-json > sbom-${{ github.sha }}.json
+        shell: bash
+
+      - name: Push image
+        run: |
+          docker push $ECR_REPO_URI:${{ env.IMAGE_TAG }}
+          docker push $ECR_REPO_URI:${{ github.sha }}
+
+      - name: Cosign sign (AWS KMS)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          COSIGN_YES: "true"
+          AWS_KMS_KEY_ARN: ${{ secrets.AWS_KMS_KEY_ARN }}
+        run: |
+          curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
+          chmod +x /usr/local/bin/cosign
+          cosign sign --key awskms://$AWS_KMS_KEY_ARN $ECR_REPO_URI:${{ env.IMAGE_TAG }}
+          cosign sign --key awskms://$AWS_KMS_KEY_ARN $ECR_REPO_URI:${{ github.sha }}
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-${{ github.sha }}.json
