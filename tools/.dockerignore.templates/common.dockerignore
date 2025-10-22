@@ -1,0 +1,14 @@
+# Common ignores
+.git
+.gitignore
+**/*.pem
+**/*.key
+**/*.env
+node_modules
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+.env
+dist
+build

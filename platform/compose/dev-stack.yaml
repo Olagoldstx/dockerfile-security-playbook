@@ -1,0 +1,26 @@
+services:
+  proxy:
+    build: ./proxy
+    networks: [edge]
+    ports:
+      - "3128:3128"   # optional: expose for testing
+
+  api:
+    build: ../../apps/api-python-flask
+    depends_on: [proxy]
+    environment:
+      - HTTPS_PROXY=http://proxy:3128
+      - HTTP_PROXY=http://proxy:3128
+      - NO_PROXY=localhost,127.0.0.1,api,web
+    networks: [app]
+
+  web:
+    build: ../../apps/web-static-nginx
+    depends_on: [api]
+    networks: [app, edge]
+    ports:
+      - "8080:8080"
+
+networks:
+  app: {}
+  edge: {}

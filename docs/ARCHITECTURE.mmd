@@ -1,0 +1,15 @@
+flowchart TD
+  subgraph Build
+    Dev-->CI
+    Sec[Security Policies]-->CI
+    CI-->SBOM
+    CI-->Scan
+    CI-->Sign
+    CI-->Attest[Provenance]
+  end
+  CI-->REG[(Private Registry)]
+  subgraph Run
+    REG-->K8s[Runtime]
+    Net[Network Team]-->K8s
+    K8s-->Logs[(SIEM)]
+  end

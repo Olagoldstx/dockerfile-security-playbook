@@ -1,0 +1,63 @@
+name: secure-build
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-scan-sign-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      APP: api-python-flask
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      ORG_PREFIX: acme
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR variables
+        run: |
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+          echo "IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ORG_PREFIX }}/$APP:${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Build
+        run: docker build -t "$IMAGE" "apps/${{ env.APP }}"
+
+      - name: SBOM
+        run: syft packages "$IMAGE" -o cyclonedx-json > "sbom-${{ env.APP }}.json"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL'
+
+      - name: Push to ECR
+        run: docker push "$IMAGE"
+
+      - name: Cosign sign with AWS KMS
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign --yes --key "awskms://alias/${{ env.ORG_PREFIX }}-cosign" "$IMAGE"
