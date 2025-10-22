@@ -1,0 +1,9 @@
+# Terraform
+**/.terraform/
+**/.terraform/*
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/crash.log
+
+# Optional: keep the lock file (recommended)
+# !aws/terraform/.terraform.lock.hcl
