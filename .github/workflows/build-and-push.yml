@@ -10,13 +10,12 @@ permissions:
 
 env:
   APP_DIR: apps/api-python-flask     # path containing the Dockerfile
-  IMAGE_TAG: latest                  # also tags with the commit SHA
+  IMAGE_TAG: latest                  # also tags builds with commit SHA
 
 jobs:
   build-scan-push-sign:
     runs-on: ubuntu-latest
 
-    # Make critical values available to every step
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REPO_URI: ${{ secrets.ECR_REPO_URI }}
@@ -26,7 +25,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (access keys for now)
+      # ── Configure AWS credentials using Access Keys ────────────────────────────
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -37,27 +37,25 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # ── Normalize and verify ECR_REPO_URI ──────────────────────────────────────
+      # ── Normalize and verify ECR_REPO_URI ─────────────────────────────────────
       - name: Normalize ECR_REPO_URI
         run: |
           CLEAN=$(printf %s "$ECR_REPO_URI" | tr -d '\r\n' | xargs)
           echo "ECR_REPO_URI_CLEAN=$CLEAN" >> "$GITHUB_ENV"
 
-      - name: Show normalized value (debug)
+      - name: Debug ECR_REPO_URI
         run: |
-          echo "ECR_REPO_URI(raw)   ='$ECR_REPO_URI'"
-          echo "ECR_REPO_URI(clean) ='$ECR_REPO_URI_CLEAN'"
-          printf "LEN(raw)=%s\n"   "$(printf %s "$ECR_REPO_URI" | wc -c)"
-          printf "LEN(clean)=%s\n" "$(printf %s "$ECR_REPO_URI_CLEAN" | wc -c)"
-          test -n "$ECR_REPO_URI_CLEAN" || { echo "ECR_REPO_URI_CLEAN is empty"; exit 1; }
+          echo "Raw:    [$ECR_REPO_URI]"
+          echo "Cleaned:[$ECR_REPO_URI_CLEAN]"
 
-      # ── Build, scan, push ─────────────────────────────────────────────────────
+      # ── Build and Tag ─────────────────────────────────────────────────────────
       - name: Build image
         working-directory: ${{ env.APP_DIR }}
         run: |
           docker build -t "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}" .
-          docker tag  "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}" "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
+          docker tag "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}" "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
+      # ── Trivy Scan ────────────────────────────────────────────────────────────
       - name: Trivy scan (fail on CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@0.24.0
         with:
@@ -68,6 +66,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
+      # ── SBOM Generation ───────────────────────────────────────────────────────
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
@@ -77,43 +76,34 @@ jobs:
         run: |
           syft scan image:${ECR_REPO_URI_CLEAN}:${IMAGE_TAG} -o cyclonedx-json > sbom-${{ github.sha }}.json
 
+      # ── Push Image ────────────────────────────────────────────────────────────
       - name: Push image
         run: |
           docker push "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}"
           docker push "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
-      # ── Sign by DIGEST (recommended) ──────────────────────────────────────────
+      # ── Install Cosign ────────────────────────────────────────────────────────
       - name: Install Cosign
         run: |
           curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
             -o /usr/local/bin/cosign
           chmod +x /usr/local/bin/cosign
 
-      - name: Resolve image digests
-        id: dig
-        run: |
-          # Ensure local view of pushed images has RepoDigests populated
-          docker pull "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
-          docker pull "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}"
-          SHA_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}")
-          LATEST_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}")
-          echo "sha=${SHA_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "latest=${LATEST_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "Resolved SHA_DIGEST=${SHA_DIGEST}"
-          echo "Resolved LATEST_DIGEST=${LATEST_DIGEST}"
-
-            - name: Cosign sign (AWS KMS) by digest
+      # ── Cosign Sign with AWS KMS ──────────────────────────────────────────────
+      - name: Cosign sign (AWS KMS)
         env:
           COSIGN_EXPERIMENTAL: "true"
           COSIGN_YES: "true"
-          # Use the KMS alias you created in Terraform
           KMS_KEY_URI: awskms:///alias/acme-cosign
         run: |
-          # Sanity check: can we read the public key from KMS?
           cosign public-key --key "${KMS_KEY_URI}" >/dev/null
           echo "KMS public key is accessible."
+          cosign sign --key "${KMS_KEY_URI}" "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}"
+          cosign sign --key "${KMS_KEY_URI}" "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
-          # Sign by digest (recommended)
-          cosign sign --key "${KMS_KEY_URI}" "${{ steps.dig.outputs.sha }}"
-          cosign sign --key "${KMS_KEY_URI}" "${{ steps.dig.outputs.latest }}"
-
+      # ── Upload SBOM ───────────────────────────────────────────────────────────
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-${{ github.sha }}.json
