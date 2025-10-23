@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  APP_DIR: apps/api-python-flask     # path that contains the Dockerfile
-  IMAGE_TAG: latest                  # also tags every build with the commit SHA
+  APP_DIR: apps/api-python-flask     # path containing the Dockerfile
+  IMAGE_TAG: latest                  # also tags with the commit SHA
 
 jobs:
   build-scan-push-sign:
@@ -37,22 +37,31 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Sanity check env
+      # ── Normalize and verify ECR_REPO_URI ──────────────────────────────────────
+      - name: Normalize ECR_REPO_URI
         run: |
-          echo "APP_DIR=${APP_DIR}"
-          echo "ECR_REPO_URI=${ECR_REPO_URI}"
-          test -n "$ECR_REPO_URI" || { echo "ECR_REPO_URI is empty"; exit 1; }
+          CLEAN=$(printf %s "$ECR_REPO_URI" | tr -d '\r\n' | xargs)
+          echo "ECR_REPO_URI_CLEAN=$CLEAN" >> "$GITHUB_ENV"
 
+      - name: Show normalized value (debug)
+        run: |
+          echo "ECR_REPO_URI(raw)   ='$ECR_REPO_URI'"
+          echo "ECR_REPO_URI(clean) ='$ECR_REPO_URI_CLEAN'"
+          printf "LEN(raw)=%s\n"   "$(printf %s "$ECR_REPO_URI" | wc -c)"
+          printf "LEN(clean)=%s\n" "$(printf %s "$ECR_REPO_URI_CLEAN" | wc -c)"
+          test -n "$ECR_REPO_URI_CLEAN" || { echo "ECR_REPO_URI_CLEAN is empty"; exit 1; }
+
+      # ── Build, scan, push, sign ───────────────────────────────────────────────
       - name: Build image
         working-directory: ${{ env.APP_DIR }}
         run: |
-          docker build -t "${ECR_REPO_URI}:${IMAGE_TAG}" .
-          docker tag  "${ECR_REPO_URI}:${IMAGE_TAG}" "${ECR_REPO_URI}:${GITHUB_SHA}"
+          docker build -t "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}" .
+          docker tag  "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}" "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
-      - name: Trivy scan (fail on CRITICAL)
+      - name: Trivy scan (fail on CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@0.24.0
         with:
-          image-ref: ${{ env.ECR_REPO_URI }}:${{ env.IMAGE_TAG }}
+          image-ref: ${{ env.ECR_REPO_URI_CLEAN }}:${{ env.IMAGE_TAG }}
           format: 'table'
           exit-code: '1'
           vuln-type: 'os,library'
@@ -66,12 +75,12 @@ jobs:
 
       - name: Generate SBOM (CycloneDX JSON)
         run: |
-          syft scan image:${{ env.ECR_REPO_URI }}:${{ env.IMAGE_TAG }} -o cyclonedx-json > sbom-${{ github.sha }}.json
+          syft scan image:${ECR_REPO_URI_CLEAN}:${IMAGE_TAG} -o cyclonedx-json > sbom-${{ github.sha }}.json
 
       - name: Push image
         run: |
-          docker push "${ECR_REPO_URI}:${IMAGE_TAG}"
-          docker push "${ECR_REPO_URI}:${GITHUB_SHA}"
+          docker push "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}"
+          docker push "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
       - name: Install Cosign
         run: |
@@ -84,8 +93,8 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
           COSIGN_YES: "true"
         run: |
-          cosign sign --key "awskms://${AWS_KMS_KEY_ARN}" "${ECR_REPO_URI}:${IMAGE_TAG}"
-          cosign sign --key "awskms://${AWS_KMS_KEY_ARN}" "${ECR_REPO_URI}:${GITHUB_SHA}"
+          cosign sign --key "awskms://${AWS_KMS_KEY_ARN}" "${ECR_REPO_URI_CLEAN}:${IMAGE_TAG}"
+          cosign sign --key "awskms://${AWS_KMS_KEY_ARN}" "${ECR_REPO_URI_CLEAN}:${GITHUB_SHA}"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
