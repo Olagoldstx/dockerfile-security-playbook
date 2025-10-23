@@ -102,18 +102,18 @@ jobs:
           echo "Resolved SHA_DIGEST=${SHA_DIGEST}"
           echo "Resolved LATEST_DIGEST=${LATEST_DIGEST}"
 
-      - name: Cosign sign (AWS KMS) by digest
+            - name: Cosign sign (AWS KMS) by digest
         env:
           COSIGN_EXPERIMENTAL: "true"
           COSIGN_YES: "true"
-          # NOTE: use three slashes when passing an ARN: awskms:///ARN
-          KMS_KEY_URI: awskms:///${{ env.AWS_KMS_KEY_ARN }}
+          # Use the KMS alias you created in Terraform
+          KMS_KEY_URI: awskms:///alias/acme-cosign
         run: |
+          # Sanity check: can we read the public key from KMS?
+          cosign public-key --key "${KMS_KEY_URI}" >/dev/null
+          echo "KMS public key is accessible."
+
+          # Sign by digest (recommended)
           cosign sign --key "${KMS_KEY_URI}" "${{ steps.dig.outputs.sha }}"
           cosign sign --key "${KMS_KEY_URI}" "${{ steps.dig.outputs.latest }}"
 
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ github.sha }}
-          path: sbom-${{ github.sha }}.json
