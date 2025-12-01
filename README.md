@@ -1,5 +1,21 @@
 # Dockerfile Security Playbook – Org‑Wide Adoption (Network × Security Collaboration)
 
+<!-- BADGES:START -->
+
+<div align="left">
+[![](https://img.shields.io/github/license/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/stars/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a&logo=github)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/last-commit/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/issues/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/issues-pr/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/repo-size/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/languages/top/Olagoldstx/dockerfile-security-playbook?style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+[![](https://img.shields.io/github/actions/workflow/status/Olagoldstx/dockerfile-security-playbook/ci.yml?branch=main&style=for-the-badge&labelColor=0f172a)](https://github.com/Olagoldstx/dockerfile-security-playbook)
+</div>
+
+<!-- BADGES:END -->
+
+
 > **Analogy:** Treat your Docker build system like a factory. Dockerfiles are the *assembly instructions*;
 > base images are the *raw materials*; CI is the *robotic line*; your registry is the *warehouse*; and
 > runtime (K8s/ECS/VM) is the *showroom*. **Security** is the QA team plus the safety inspectors.
